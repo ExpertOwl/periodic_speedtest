@@ -4,19 +4,6 @@ import sys
 from datetime import datetime, timedelta
 from time import sleep
 
-results_to_report = ['timestamp','download', 'upload', 'ping', 'isp']
-headers = ['Timestamp',
-           'Upload(Mb/s)',
-           'Download(Mb/s)',
-           'Ping', 
-           'ISP']
-
-outfile = "speedtest_results.csv"
-hours_between_tests = 1
-number_of_tests = 0 #0 or less will run until the process is ended 
-BitsToMegaBits = 1e-6
-hours_to_seconds = 3600
-
 def file_exsists(out_csv):
     try: 
         with open(out_csv, 'r+'):
@@ -47,6 +34,15 @@ def headers_match(out_csv, headers):
         return(file_headers)
         return(file_headers == headers)
 
+def periodic_speedtest(outfile, results_to_report):
+    current_test = setup_speedtest()
+    run_speedtest(current_test)
+    results = filter_results(current_test, results_to_report)
+    results['download'] *= BitsToMegaBits
+    results['upload'] *= BitsToMegaBits
+    results['isp'] = get_from_client(current_test, 'isp')
+    write_results(results, outfile, results_to_report)
+    
 def setup_speedtest():
     s = speedtest.Speedtest()
     s.get_best_server()
@@ -68,43 +64,49 @@ def write_results(results, out_csv, results_to_report):
     with open(out_csv, 'a', newline='') as csvfile: 
         writer = csv.DictWriter(csvfile, fieldnames=results_to_report)
         writer.writerow(results)
+def progress_msg(number_of_tests, test_number):
+    if number_of_tests > 0:
+        return(f'Running test {test_num} of {number_of_tests}')
+    else: 
+        return(f'Running test number {test_num}')
         
+
+results_to_report = ['timestamp','download', 'upload', 'ping', 'isp']
+headers = ['Timestamp',
+           'Upload(Mb/s)',
+           'Download(Mb/s)',
+           'Ping', 
+           'ISP']
+
+outfile = "speedtest_results.csv"
+hours_between_tests = 1
+number_of_tests = 0 #0 or less will run until the process is ended 
+BitsToMegaBits = 1e-6
+hours_to_seconds = 3600
+
 if not file_exsists(outfile):
     print(f'Creating {outfile}')
     create_file(outfile)
 if not headers_exsist(outfile):
     write_headers(outfile, headers)
 if not headers_match(outfile, headers): 
+    print(f'{headers_match(outfile, headers)}')
+    print(f'{headers}')
     if not input(f"Warning: The headers in {outfile} do not match the variable 'headers'. Continue? [y/n]").lower() == 'y':
         sys.exit()
 
 test_num = 1
+
 while True:
-
-    if number_of_tests > 0:
-        print(f'Running test {test_num} of {number_of_tests}')
-    else: 
-        print(f'Running test number {test_num}')
-
-    current_test = setup_speedtest()
-    run_speedtest(current_test)
-    
-    results = filter_results(current_test, results_to_report)
-    results['download'] *= BitsToMegaBits
-    results['upload'] *= BitsToMegaBits
-    results['isp'] = get_from_client(current_test, 'isp')
-    
-    write_results(results, outfile, results_to_report)
-    print(f'Wrote to {outfile}')
+    print(progress_msg(number_of_tests, test_num))
+    periodic_speedtest(outfile, results_to_report)
+    print (f'wrote to {outfile}')
     next_test = (datetime.now() + timedelta(hours=hours_between_tests)).strftime('%H:%M:%S')
     if number_of_tests > 0 and test_num == number_of_tests:
         break
     test_num += 1
     print(f'Next test at {next_test}')
-    print("(Use CTRL-D to quit application)")
     sleep(hours_between_tests * hours_to_seconds)
-    
-print(f'All results available in {outfile}')
 
 
 
